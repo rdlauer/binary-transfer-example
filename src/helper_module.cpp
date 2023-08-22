@@ -1,5 +1,4 @@
 #include "helper.h"
-
 #include <Notecard.h>
 
 struct context
@@ -10,7 +9,7 @@ struct context
 
 static struct context prv_ctx;
 
-int binary_setup(size_t chunk_size, size_t buf_size)
+int setup_binary_buffer(size_t chunk_size, size_t buf_size)
 {
 	size_t req_size = NoteBinaryRequiredTxBuffer(chunk_size);
 
@@ -27,7 +26,7 @@ int binary_setup(size_t chunk_size, size_t buf_size)
 	return 0;
 }
 
-int binary_send_to_notecard(const void *data, size_t len)
+int send_binary_data_to_notecard(const void *data, size_t len)
 {
 	const char *err =
 		NoteBinaryTransmit((uint8_t *)data, len, prv_ctx.buf_size, prv_ctx.notecard_binary_offset);
@@ -36,17 +35,19 @@ int binary_send_to_notecard(const void *data, size_t len)
 	{
 		NoteDebugf("Error sending data: %s\n", err);
 		// on an error (e.g. buffer is full)
-		// flush what is currently in storage to a web.post request
-		binary_send_to_notehub();
+		// flush what is currently in notecard storage to Notehub with a web.post request
+		send_binary_data_to_notehub();
 		return 1;
 	}
+
 	prv_ctx.notecard_binary_offset += len;
 
 	return 0;
 }
 
-void binary_send_to_notehub(void)
+void send_binary_data_to_notehub(void)
 {
+	// notecard must be in "continous" mode and connected to notehub first
 	const size_t RETRY_COUNT = 5;
 	size_t attempt = 0;
 	for (bool connected = false; !connected && attempt < RETRY_COUNT; ++attempt)

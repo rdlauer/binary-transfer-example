@@ -3,8 +3,9 @@
 // Use of this source code is governed by licenses granted by the
 // copyright holder including that found in the LICENSE file.
 //
-// This example shows how a developer can efficiently send large binary payloads
-// using COBS with the Notecard.
+// This example shows how a developer can efficiently send and receive large
+// binary payloads using the Notecard.
+// https://blues.dev/guides-and-tutorials/notecard-guides/sending-and-receiving-large-binary-objects
 
 #include <Arduino.h>
 #include <stdlib.h>
@@ -30,12 +31,8 @@ const size_t img_len = example_img_len;
 uint8_t temp_buffer[CHUNK_SIZE + 128];
 
 // This is the unique Notehub Product Identifier for your device
+// More details at https://dev.blues.io/tools-and-sdks/samples/product-uid
 #define PRODUCT_UID "com.blues.rlauer:aaa"
-
-#ifndef PRODUCT_UID
-#define PRODUCT_UID "" // "com.my-company.my-name:my-project"
-#pragma message "PRODUCT_UID is not defined in this example. Please ensure your Notecard has a product identifier set before running this example or define it in code here. More details at https://dev.blues.io/tools-and-sdks/samples/product-uid"
-#endif
 
 Notecard notecard;
 
@@ -77,11 +74,15 @@ void setup()
   // Reset the Notecard's binary storage area, so that we can start fresh
   NoteBinaryReset();
 
-  // Send the binary image to Notecard
-  binary_setup(CHUNK_SIZE, sizeof(temp_buffer));
+  // #####################
+  // OUTBOUND FILE EXAMPLE
+  // #####################
+
+  // Check the binary buffer to make sure the fragment size will fit
+  setup_binary_buffer(CHUNK_SIZE, sizeof(temp_buffer));
   notecard.logDebugf("Sending image of size %u, in chunks of size: %u\n", img_len, CHUNK_SIZE);
 
-  // send the binary image in fragments of size CHUNK_SIZE
+  // send the binary file to Notecard in fragments of size CHUNK_SIZE
   int i = 0;
   size_t bytes_left = img_len;
   while (bytes_left)
@@ -91,7 +92,7 @@ void setup()
     size_t bytes_to_send = bytes_left >= CHUNK_SIZE ? CHUNK_SIZE : bytes_left;
     memcpy(temp_buffer, img_map + i * CHUNK_SIZE, bytes_to_send);
 
-    if (!binary_send_to_notecard(temp_buffer, bytes_to_send))
+    if (!send_binary_data_to_notecard(temp_buffer, bytes_to_send))
     {
       bytes_left -= bytes_to_send;
       i++;
@@ -99,9 +100,39 @@ void setup()
   }
 
   notecard.logDebug("File transfered to Notecard, now web.post to Notehub\n");
-  binary_send_to_notehub();
+  send_binary_data_to_notehub();
 
-  notecard.logDebug("Done!\n");
+  notecard.logDebug("Done with outgoing file!\n");
+
+  // ####################
+  // INBOUND FILE EXAMPLE
+  // ####################
+
+  if (J *req = NoteNewRequest("web.get"))
+  {
+    JAddStringToObject(req, "route", "GetImage");
+    JAddStringToObject(req, "content", "images/jpeg");
+    JAddBoolToObject(req, "binary", true);
+
+    if (!NoteRequest(req))
+    {
+      notecard.logDebug("Error receiving image\n");
+    }
+
+    // get length of downloaded binary data
+    size_t buffer_len = 0;
+    NoteBinaryRequiredRxBuffer(&buffer_len);
+
+    // Call NoteBinaryReceive to verify and decode the binary data
+    uint8_t *my_binary_data = (uint8_t *)malloc(buffer_len);
+    size_t received_byte_count = 0;
+    NoteBinaryReceive(my_binary_data, buffer_len, &received_byte_count);
+
+    // Clear the binary buffer on the Notecard after the host has handled the binary data
+    NoteBinaryReset();
+
+    notecard.logDebug("Done with inbound file!\n");
+  }
 }
 
 void loop()
